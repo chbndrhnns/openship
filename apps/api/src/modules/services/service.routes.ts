@@ -24,6 +24,8 @@ import * as ctrl from "./service.controller";
 import { AgentExecBody } from "../../lib/agent-exec.schema";
 import {
   CreateServiceBody,
+  RestartServiceBody,
+  RestartServiceQuery,
   SetServiceEnvVarsBody,
   SyncServicesBody,
   UpdateServiceBody,
@@ -170,7 +172,20 @@ r.post(
 /* ─── Per-service container actions ─────────────────────────────────────── */
 r.post("/:serviceId/start", { tag: "project:service:write", mcp: { description: "Start this service's container." } }, cloudProjectProxy, ctrl.startContainer);
 r.post("/:serviceId/stop", { tag: "project:service:write", mcp: { description: "Stop this service's container." } }, cloudProjectProxy, ctrl.stopContainer);
-r.post("/:serviceId/restart", { tag: "project:service:write", mcp: { description: "Restart this service's container." } }, cloudProjectProxy, ctrl.restartContainer);
+r.post(
+  "/:serviceId/restart",
+  {
+    tag: "project:service:write",
+    query: RestartServiceQuery,
+    body: RestartServiceBody,
+    mcp: {
+      description:
+        "Restart this service's container (pass recreate: true to recreate with updated env/config).",
+    },
+  },
+  cloudProjectProxy,
+  ctrl.restartContainer,
+);
 
 /* ─── Service environment variables ─────────────────────────────────────── */
 r.get(

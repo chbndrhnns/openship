@@ -1901,13 +1901,21 @@ export async function restartServiceContainer(
   ctx: RequestContext,
   projectId: string,
   serviceId: string,
+  opts?: { recreate?: boolean },
 ) {
   await assertNotControlPlaneById(projectId);
-  const { runtime, containerId, row } = await resolveServiceContainer(
+  if (opts?.recreate) {
+    return provisionServiceContainer(ctx, projectId, serviceId);
+  }
+  const existing = await resolveServiceContainer(
     ctx,
     projectId,
     serviceId,
-  );
+  ).catch(() => null);
+  if (!existing?.containerId) {
+    return provisionServiceContainer(ctx, projectId, serviceId);
+  }
+  const { runtime, containerId, row } = existing;
   try {
     await runtime.restart(containerId);
     if (row) {

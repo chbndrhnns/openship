@@ -367,6 +367,24 @@ export const SetServiceEnvVarsBody = Type.Object(
   { additionalProperties: false },
 );
 
+export const RestartServiceQuery = Type.Object({
+  recreate: Type.Optional(
+    Type.Boolean({
+      description:
+        "Recreate the container from its image with fresh environment and config rather than a raw restart.",
+    }),
+  ),
+});
+
+export const RestartServiceBody = Type.Object({
+  recreate: Type.Optional(
+    Type.Boolean({
+      description:
+        "Recreate the container from its image with fresh environment and config rather than a raw restart.",
+    }),
+  ),
+});
+
 export type TCreateServiceBody = Static<typeof CreateServiceBody>;
 export type TUpdateServiceBody = Static<typeof UpdateServiceBody>;
 export type TSyncServicesBody = Static<typeof SyncServicesBody>;

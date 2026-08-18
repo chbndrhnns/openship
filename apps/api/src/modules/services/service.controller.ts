@@ -306,9 +306,17 @@ export async function restartContainer(c: Context) {
   const ctx = getRequestContext(c);
   const projectId = param(c, "id");
   const serviceId = param(c, "serviceId");
+  const recreateParam = c.req.query("recreate");
+  let recreate = recreateParam === "true" || recreateParam === "1";
+  if (!recreate && c.req.header("content-type")?.includes("application/json")) {
+    const body = await c.req.json<{ recreate?: boolean }>().catch(() => null);
+    if (body?.recreate) recreate = true;
+  }
   try {
-    await serviceService.restartServiceContainer(ctx, projectId, serviceId);
-    return c.json({ success: true });
+    const result = await serviceService.restartServiceContainer(ctx, projectId, serviceId, {
+      recreate,
+    });
+    return c.json({ success: true, ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to restart container";
     return c.json({ success: false, error: message }, 400);
