@@ -48,10 +48,7 @@ describe("pickHostPort's preferred-port contract", () => {
 });
 
 describe("the deploy routes the carried port through the allocator", () => {
-  const src = readFileSync(
-    new URL("./deploy.service.ts", import.meta.url),
-    "utf8",
-  );
+  const src = readFileSync(new URL("./deploy.service.ts", import.meta.url), "utf8");
   /** The loopback-port allocation block, bounded by its own loop. */
   const block = (() => {
     const from = src.indexOf("for (const containerPort of routedContainerPorts) {");
@@ -68,8 +65,9 @@ describe("the deploy routes the carried port through the allocator", () => {
     expect(block).not.toMatch(/if \(carried\) \{\s*hostPort = carried;/);
   });
 
-  it("still avoids ports this same deploy already handed out", () => {
-    expect(block).toContain("avoid: usedHostPorts");
+  it("still avoids ports already handed out to other projects or siblings", () => {
+    expect(block).toMatch(/avoid[,:]/);
+    expect(src).toContain("listOrgPinnedHostPorts(project.organizationId, project.id)");
   });
 
   it("says so when it had to move a carried port", () => {

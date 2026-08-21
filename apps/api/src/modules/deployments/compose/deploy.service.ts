@@ -55,11 +55,8 @@ import { isLoopbackHost, resolveServerHost } from "../../../lib/server-target";
 import { resolveEdgeTargetHost } from "../../../lib/edge-target";
 import { containerIdForService } from "../../services/service-container";
 import { isConnectionLoss } from "../../../lib/remote-state";
-import {
-  appConfigHostPath,
-  withAppConfigHost,
-  writeAppConfigFile,
-} from "./app-config-host";
+import { appConfigHostPath, withAppConfigHost, writeAppConfigFile } from "./app-config-host";
+import { listOrgPinnedHostPorts } from "../pinned-host-ports";
 import {
   auditRoutedDomainTls,
   buildServiceRouteDomains,
@@ -78,7 +75,11 @@ import {
 import { ensureManagedEdgeProxy } from "../../../lib/managed-edge-proxy";
 import { ensureRoutingReady } from "../../../lib/edge-reconcile";
 import * as sessionManager from "../session-manager";
-import { isStaticService, parseServicePort, serviceAliasExtras } from "../../../lib/deployable-service";
+import {
+  isStaticService,
+  parseServicePort,
+  serviceAliasExtras,
+} from "../../../lib/deployable-service";
 import { computeKeepSet } from "../image-gc";
 import { auditPorts } from "../port-audit.service";
 import {
@@ -89,10 +90,7 @@ import {
 } from "../stability-audit.service";
 import { resolveReadinessGate, type ResolvedReadinessGate } from "../readiness-gate";
 import { probeDeployedReadiness } from "../readiness-probe";
-import {
-  hostChannelDeployNotice,
-  type PortCheckResult,
-} from "../../../lib/deployment-runtime";
+import { hostChannelDeployNotice, type PortCheckResult } from "../../../lib/deployment-runtime";
 import { isRealContainerRef } from "../../../lib/container-ref";
 import { resolveServicePort } from "./domain-helpers";
 import { compileProjectRoutingFields } from "../../../lib/project-routing-fields";
@@ -104,10 +102,7 @@ import {
   resolveDeployImage,
 } from "./service-scope";
 import { buildUpstreamUrl, resolveRouteStrategy } from "../../../lib/upstream-url";
-import {
-  withLoopbackPublishAll,
-  upstreamHostPortFor,
-} from "../../../lib/loopback-publish";
+import { withLoopbackPublishAll, upstreamHostPortFor } from "../../../lib/loopback-publish";
 
 export interface ComposeDeployResult {
   /** `reconciling` when at least one service's outcome is UNKNOWN because the
@@ -593,7 +588,6 @@ function resolveServiceResources(
     diskMb: base.diskMb,
   };
 }
-
 
 function createServiceRuntimeConfig(opts: {
   project: Project;
@@ -1210,6 +1204,10 @@ export async function deployComposeServices(
   for (const prev of previousByServiceId.values()) {
     if (prev.hostPort) usedHostPorts.add(prev.hostPort);
   }
+  const orgPinnedPorts = await listOrgPinnedHostPorts(project.organizationId, project.id);
+  for (const p of orgPinnedPorts) {
+    usedHostPorts.add(p);
+  }
 
   // #438: app-template config files (`advanced.files`) are host-side state living
   // under `/var/lib/openship`, the root-owned tree the edge's own vhosts sit in.
@@ -1518,7 +1516,9 @@ export async function deployComposeServices(
         svc.name,
         `no public URL is known for ${unresolvedEnvUrls
           .map((u) => `${u.key}=${u.tokens.join("")}`)
-          .join(", ")} — ${unresolvedEnvUrls.length === 1 ? "that variable is" : "those variables are"} left UNSET rather than blank`,
+          .join(
+            ", ",
+          )} — ${unresolvedEnvUrls.length === 1 ? "that variable is" : "those variables are"} left UNSET rather than blank`,
       );
     }
 
@@ -1846,7 +1846,10 @@ export async function deployComposeServices(
     // just belongs on the service that owns the interfaces, and the log says so.
     if (hasNoRoutableAddress) {
       const providers = composeNamespaceDependencies(svc.advanced as ComposeAdvanced | null);
-      const where = providers.length > 0 ? `shares ${providers.join(", ")}'s network namespace` : "has no network of its own";
+      const where =
+        providers.length > 0
+          ? `shares ${providers.join(", ")}'s network namespace`
+          : "has no network of its own";
       logger.log(
         `Service "${svc.name}" ${where}, so it has no address to route to — skipping its ` +
           `domains and its published ports. Move them to the service it shares.\n`,
@@ -1951,9 +1954,13 @@ export async function deployComposeServices(
          * another if it isn't. Passing it there rather than branching around the allocator means
          * one rule for both cases and no second place that decides what a free port is.
          */
+        const avoid = new Set(usedHostPorts);
+        if (carried) {
+          avoid.delete(carried);
+        }
         const allocation = await allocateHostPort(opts.executor, {
           preferred: carried,
-          avoid: usedHostPorts,
+          avoid,
         });
         const hostPort = allocation.port;
         if (carried && hostPort !== carried) {
@@ -2338,9 +2345,7 @@ export async function deployComposeServices(
     const probes = Promise.all(
       portAuditTargets.map(async (target) => {
         const [pc] = await auditPorts(runtime, target.containerId, [target.port], logger);
-        return pc
-          ? { ...pc, serviceId: target.serviceId, serviceName: target.serviceName }
-          : null;
+        return pc ? { ...pc, serviceId: target.serviceId, serviceName: target.serviceName } : null;
       }),
     );
     const audited = await Promise.race([
@@ -2437,9 +2442,7 @@ export async function deployComposeServices(
         f.target.serviceId &&
         readinessByServiceId.get(f.target.serviceId)?.onFailure === "fail",
     );
-    for (const finding of findings.filter(
-      (f) => !f.verdict.ok && !vetoing.includes(f),
-    )) {
+    for (const finding of findings.filter((f) => !f.verdict.ok && !vetoing.includes(f))) {
       // "warn": say what didn't hold, but leave the service's deploy result alone
       // so the stack stays up. Opting into the watch to get the signal must not
       // also opt into a veto.
@@ -2701,9 +2704,7 @@ export async function deployComposeServices(
     const domainRows = needsDomainMap
       ? [...domainByHostname.values()]
       : await repos.domain.listByProject(project.id).catch(() => []);
-    const candidates = enabled.filter((svc) =>
-      withContainer.some((r) => r.serviceId === svc.id),
-    );
+    const candidates = enabled.filter((svc) => withContainer.some((r) => r.serviceId === svc.id));
     const primaryId = pickPrimaryServiceId(candidates, domainRows);
     return (
       withContainer.find((r) => r.serviceId === primaryId)?.containerId ??
@@ -2827,7 +2828,10 @@ export async function deployComposeServices(
         // compiled ones would ASSIGN over them, silently dropping a vercel.json external
         // rewrite on a path-routed domain. Fan-out first, so its explicit per-path
         // upstreams are matched ahead of a broader compiled rule.
-        const proxyLocations = [...(reg.proxyLocations ?? []), ...(routingFields.proxyLocations ?? [])];
+        const proxyLocations = [
+          ...(reg.proxyLocations ?? []),
+          ...(routingFields.proxyLocations ?? []),
+        ];
         await routeContext.routing.registerRoute({
           domain: reg.hostname,
           tls: true,
