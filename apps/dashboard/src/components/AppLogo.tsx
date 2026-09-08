@@ -19,6 +19,7 @@ export const APP_LOGO: Record<
   slack: { src: "https://www.google.com/s2/favicons?domain=slack.com&sz=128" },
   microsoftteams: { src: "https://www.google.com/s2/favicons?domain=teams.microsoft.com&sz=128" },
   // Supabase's official mark, rendered in its brand green by the simpleicons CDN.
+  authentik: { slug: "authentik" },
   supabase: { slug: "supabase" },
   pocketbase: { slug: "pocketbase" },
   mongodb: { slug: "mongodb" },

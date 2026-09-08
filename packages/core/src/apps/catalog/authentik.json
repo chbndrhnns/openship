@@ -1,0 +1,182 @@
+{
+  "$schema": "https://openship.io/app.schema.json",
+  "available": true,
+  "verified": true,
+  "id": "authentik",
+  "name": "Authentik",
+  "description": "Open-source identity provider focused on flexibility and versatility with OAuth2, SAML, LDAP, and SCIM support.",
+  "kind": "template",
+  "logo": "authentik",
+  "category": "other",
+  "tags": [
+    "auth",
+    "identity",
+    "sso",
+    "oidc",
+    "saml",
+    "ldap",
+    "security"
+  ],
+  "minEngine": "0.6.6",
+  "framework": "docker-compose",
+  "services": [
+    {
+      "name": "postgresql",
+      "image": "docker.io/library/postgres:16-alpine",
+      "restart": "unless-stopped",
+      "volumes": [
+        "authentik_db:/var/lib/postgresql/data"
+      ],
+      "environment": {
+        "POSTGRES_DB": "authentik",
+        "POSTGRES_USER": "authentik",
+        "POSTGRES_PASSWORD": "{{config:POSTGRES_PASSWORD}}"
+      },
+      "secretEnv": [
+        "POSTGRES_PASSWORD"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -d authentik -U authentik"
+        ],
+        "retries": 5,
+        "timeout": "5s",
+        "interval": "30s"
+      }
+    },
+    {
+      "name": "redis",
+      "image": "docker.io/library/redis:alpine",
+      "commandArgv": [
+        "--save",
+        "60",
+        "1",
+        "--loglevel",
+        "warning"
+      ],
+      "restart": "unless-stopped",
+      "volumes": [
+        "authentik_redis:/data"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "redis-cli ping | grep PONG"
+        ],
+        "retries": 5,
+        "timeout": "3s",
+        "interval": "30s"
+      }
+    },
+    {
+      "name": "server",
+      "image": "ghcr.io/goauthentik/server:2026.8.1",
+      "commandArgv": [
+        "server"
+      ],
+      "exposed": true,
+      "exposedPort": 9000,
+      "routes": [
+        {
+          "port": 9000
+        }
+      ],
+      "restart": "unless-stopped",
+      "volumes": [
+        "authentik_media:/media",
+        "authentik_templates:/templates"
+      ],
+      "dependsOn": [
+        "postgresql",
+        "redis"
+      ],
+      "environment": {
+        "AUTHENTIK_SECRET_KEY": "{{config:AUTHENTIK_SECRET_KEY}}",
+        "AUTHENTIK_REDIS__HOST": "redis",
+        "AUTHENTIK_POSTGRESQL__HOST": "postgresql",
+        "AUTHENTIK_POSTGRESQL__NAME": "authentik",
+        "AUTHENTIK_POSTGRESQL__USER": "authentik",
+        "AUTHENTIK_POSTGRESQL__PASSWORD": "{{config:POSTGRES_PASSWORD}}"
+      },
+      "secretEnv": [
+        "AUTHENTIK_SECRET_KEY",
+        "AUTHENTIK_POSTGRESQL__PASSWORD"
+      ]
+    },
+    {
+      "name": "worker",
+      "image": "ghcr.io/goauthentik/server:2026.8.1",
+      "commandArgv": [
+        "worker"
+      ],
+      "restart": "unless-stopped",
+      "volumes": [
+        "authentik_media:/media",
+        "authentik_certs:/certs",
+        "authentik_templates:/templates"
+      ],
+      "dependsOn": [
+        "postgresql",
+        "redis"
+      ],
+      "environment": {
+        "AUTHENTIK_SECRET_KEY": "{{config:AUTHENTIK_SECRET_KEY}}",
+        "AUTHENTIK_REDIS__HOST": "redis",
+        "AUTHENTIK_POSTGRESQL__HOST": "postgresql",
+        "AUTHENTIK_POSTGRESQL__NAME": "authentik",
+        "AUTHENTIK_POSTGRESQL__USER": "authentik",
+        "AUTHENTIK_POSTGRESQL__PASSWORD": "{{config:POSTGRES_PASSWORD}}"
+      },
+      "secretEnv": [
+        "AUTHENTIK_SECRET_KEY",
+        "AUTHENTIK_POSTGRESQL__PASSWORD"
+      ]
+    }
+  ],
+  "configFields": [
+    {
+      "key": "POSTGRES_PASSWORD",
+      "service": "postgresql",
+      "label": "PostgreSQL password",
+      "help": "Auto-generated. Secure password for the Authentik database.",
+      "generate": "secret",
+      "secret": true
+    },
+    {
+      "key": "AUTHENTIK_SECRET_KEY",
+      "service": "server",
+      "label": "Authentik secret key",
+      "help": "Auto-generated. Secret encryption and signing key for Authentik.",
+      "generate": "secret",
+      "secret": true
+    }
+  ],
+  "connection": {
+    "title": "Set up Authentik",
+    "description": "Authentik is ready. Open the initial setup URL below to configure your akadmin account and begin creating applications and identity providers.",
+    "guide": {
+      "defaultMode": "public"
+    },
+    "outputs": [
+      {
+        "id": "url",
+        "label": "Authentik URL",
+        "source": "publicUrl:server",
+        "kind": "url",
+        "recommended": true,
+        "help": "Open the Authentik login and administration interface."
+      },
+      {
+        "id": "initialSetup",
+        "label": "Initial setup flow",
+        "source": "template:{{publicUrl:server}}/if/flow/initial-setup/",
+        "kind": "url",
+        "help": "First-time setup wizard to initialize the akadmin password."
+      }
+    ],
+    "firstLogin": {
+      "note": "Navigate to the initial setup flow URL to configure the administrator password for the akadmin user."
+    }
+  }
+}
